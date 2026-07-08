@@ -25,6 +25,7 @@ import 'package:url_launcher/url_launcher.dart';
 import 'package:window_manager/window_manager.dart';
 import 'package:window_size/window_size.dart' as window_size;
 import '../widgets/button.dart';
+import 'auth/auth_session.dart';
 
 class DesktopHomePage extends StatefulWidget {
   const DesktopHomePage({Key? key}) : super(key: key);
@@ -60,13 +61,21 @@ class _DesktopHomePageState extends State<DesktopHomePage>
   Widget build(BuildContext context) {
     super.build(context);
     final isIncomingOnly = bind.isIncomingOnly();
+    // RemoteSupport: host rolündeki kullanıcı için "Uzak Masaüstünü Denetle"
+    // (bağlan) kutusu tamamen gizlenir - sadece kendi ID/parola kutusunu
+    // görür. Controller rolündeki kullanıcı mevcut tam arayüzü görmeye
+    // devam eder.
+    // TODO: tier bazlı ek kısıtlamalar (kaç farklı kişiye bağlanabilir,
+    // ne kadar süreyle bağlanabilir vb.) ileride buraya eklenecek.
+    final isHost = AuthSession.role == AuthRole.host;
+    final hideRightPane = isIncomingOnly || isHost;
     return _buildBlock(
         child: Row(
       crossAxisAlignment: CrossAxisAlignment.start,
       children: [
         buildLeftPane(context),
-        if (!isIncomingOnly) const VerticalDivider(width: 1),
-        if (!isIncomingOnly) Expanded(child: buildRightPane(context)),
+        if (!hideRightPane) const VerticalDivider(width: 1),
+        if (!hideRightPane) Expanded(child: buildRightPane(context)),
       ],
     ));
   }
@@ -767,7 +776,8 @@ class _DesktopHomePageState extends State<DesktopHomePage>
 
     bool isChattyMethod(String methodName) {
       switch (methodName) {
-        case kWindowBumpMouse: return true;
+        case kWindowBumpMouse:
+          return true;
       }
 
       return false;
@@ -776,7 +786,7 @@ class _DesktopHomePageState extends State<DesktopHomePage>
     rustDeskWinManager.setMethodHandler((call, fromWindowId) async {
       if (!isChattyMethod(call.method)) {
         debugPrint(
-          "[Main] call ${call.method} with args ${call.arguments} from window $fromWindowId");
+            "[Main] call ${call.method} with args ${call.arguments} from window $fromWindowId");
       }
       if (call.method == kWindowMainWindowOnTop) {
         windowOnTop(null);
@@ -811,9 +821,8 @@ class _DesktopHomePageState extends State<DesktopHomePage>
           connToken: call.arguments['connToken'],
         );
       } else if (call.method == kWindowBumpMouse) {
-        return RdPlatformChannel.instance.bumpMouse(
-          dx: call.arguments['dx'],
-          dy: call.arguments['dy']);
+        return RdPlatformChannel.instance
+            .bumpMouse(dx: call.arguments['dx'], dy: call.arguments['dy']);
       } else if (call.method == kWindowEventMoveTabToNewWindow) {
         final args = call.arguments.split(',');
         int? windowId;
