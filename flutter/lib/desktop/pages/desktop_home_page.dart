@@ -27,6 +27,26 @@ import 'package:window_size/window_size.dart' as window_size;
 import '../widgets/button.dart';
 import 'auth/auth_session.dart';
 
+/// RemoteSupport: Controller arayüzünde çıkış yap butonu. Basıldığında
+/// AuthSession.logout() çağrılır; AuthGate bunu GetX (Obx) ile dinlediği
+/// için otomatik olarak HostHomePage'e (giriş/kayıt ekranına) döner -
+/// manuel Navigator işlemi gerekmez.
+Widget _buildLogoutButton(BuildContext context) {
+  return Padding(
+    padding: const EdgeInsets.symmetric(horizontal: 20, vertical: 8),
+    child: OutlinedButton.icon(
+      onPressed: () async {
+        await AuthSession.logout();
+      },
+      icon: const Icon(Icons.logout, size: 16),
+      label: const Text('Çıkış Yap'),
+      style: OutlinedButton.styleFrom(
+        minimumSize: const Size.fromHeight(36),
+      ),
+    ),
+  );
+}
+
 class DesktopHomePage extends StatefulWidget {
   const DesktopHomePage({Key? key}) : super(key: key);
 
@@ -90,11 +110,7 @@ class _DesktopHomePageState extends State<DesktopHomePage>
     final isOutgoingOnly = bind.isOutgoingOnly();
     final children = <Widget>[
       if (!isOutgoingOnly) buildPresetPasswordWarning(),
-      if (bind.isCustomClient())
-        Align(
-          alignment: Alignment.center,
-          child: loadPowered(context),
-        ),
+      // RemoteSupport: "RustDesk tarafından desteklenmemektedir" ikonu/yazısı kaldırıldı
       Align(
         alignment: Alignment.center,
         child: loadLogo(),
@@ -121,6 +137,7 @@ class _DesktopHomePageState extends State<DesktopHomePage>
         },
       ),
       buildPluginEntry(),
+      _buildLogoutButton(context),
     ];
     if (isIncomingOnly) {
       children.addAll([
@@ -469,7 +486,9 @@ class _DesktopHomePageState extends State<DesktopHomePage>
       return buildInstallCard("", systemError, "", () {});
     }
 
-    if (isWindows && !bind.isDisableInstallation()) {
+    // RemoteSupport: Windows'ta pembe "Kullanıcı Hesabı Denetimi / Install"
+    // kartı tamamen devre dışı bırakıldı.
+    if (false && isWindows && !bind.isDisableInstallation()) {
       if (!bind.mainIsInstalled()) {
         return buildInstallCard(
             "", bind.isOutgoingOnly() ? "" : "install_tip", "Install",

@@ -3,6 +3,12 @@
 // RemoteSupport - kendi auth-server'ımıza karşı giriş/kayıt ekranı.
 // Client artık launcher'sız da (rustdesk.exe tek başına) çalıştırıldığında
 // önce burayı gösterip auth-server'dan doğrulama alıyor.
+//
+// NOT: Bu sayfa artık yalnızca "teknisyen/controller" olmak isteyenler
+// tarafından görülüyor (bkz. host_home_page.dart -> "Giriş yap / Kaydol").
+// Host'lar zaten kayıt olmadan HostHomePage'de kendi ID/parolasını görüyor,
+// bu yüzden burada rol seçimi anlamsız hale geldi ve kaldırıldı - kayıt
+// olan herkes otomatik olarak AuthRole.controller olarak kaydedilir.
 
 import 'package:flutter/material.dart';
 import 'auth_session.dart';
@@ -17,7 +23,6 @@ class LoginPage extends StatefulWidget {
 
 class _LoginPageState extends State<LoginPage> {
   bool _isRegisterMode = false;
-  String _selectedRole = AuthRole.controller;
 
   final _emailCtrl = TextEditingController();
   final _passCtrl = TextEditingController();
@@ -46,8 +51,10 @@ class _LoginPageState extends State<LoginPage> {
       _error = null;
     });
 
+    // Bu ekrandan kayıt olan herkes teknisyen/controller'dır. Host'lar
+    // hiç kayıt olmadan HostHomePage'de kendi ID/parolasını zaten görüyor.
     final result = _isRegisterMode
-        ? await AuthSession.register(email, password, _selectedRole)
+        ? await AuthSession.register(email, password, AuthRole.controller)
         : await AuthSession.login(email, password);
 
     if (!mounted) return;
@@ -97,29 +104,6 @@ class _LoginPageState extends State<LoginPage> {
                     border: OutlineInputBorder(),
                   ),
                 ),
-                if (_isRegisterMode) ...[
-                  const SizedBox(height: 18),
-                  const Text(
-                    'Bu cihaz ne olarak kullanılacak?',
-                    style: TextStyle(fontSize: 13, color: Colors.grey),
-                  ),
-                  const SizedBox(height: 8),
-                  SegmentedButton<String>(
-                    segments: const [
-                      ButtonSegment(
-                        value: AuthRole.host,
-                        label: Text('Destek Alınacak\n(Host)'),
-                      ),
-                      ButtonSegment(
-                        value: AuthRole.controller,
-                        label: Text('Bağlanacak\n(Teknisyen)'),
-                      ),
-                    ],
-                    selected: {_selectedRole},
-                    onSelectionChanged: (s) =>
-                        setState(() => _selectedRole = s.first),
-                  ),
-                ],
                 if (_error != null) ...[
                   const SizedBox(height: 16),
                   Text(

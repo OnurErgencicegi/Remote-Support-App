@@ -14,6 +14,7 @@ import '../../models/peer_model.dart';
 import '../../models/platform_model.dart';
 import '../../desktop/widgets/material_mod_popup_menu.dart' as mod_menu;
 import '../../desktop/widgets/popup_menu.dart';
+import '../../desktop/pages/auth/connection_guard.dart';
 import 'dart:math' as math;
 
 typedef PopupMenuEntryBuilder = Future<List<mod_menu.PopupMenuEntry<String>>>
@@ -1544,6 +1545,15 @@ void connectInPeerTab(BuildContext context, Peer peer, PeerTabIndex tab,
     bool isTcpTunneling = false,
     bool isRDP = false,
     bool isTerminal = false}) async {
+  // Guard: bu controller bu host'a daha önce bağlandıysa (herhangi bir
+  // bağlantı tipiyle - connect, dosya transferi, terminal, RDP, tcp
+  // tunneling, kamera) burada durur. Sunucu tarafında
+  // UNIQUE(controller_user_id, host_peer_id) kısıtı zaten aynı kuralı
+  // uyguluyor; burada erken çıkış yaparak gereksiz bağlantı denemesini
+  // ve kullanıcıya yanlış bir bağlantı ekranı gösterilmesini engelliyoruz.
+  final allowed = await ConnectionGuard.checkAndStart(context, peer.id);
+  if (!allowed) return;
+
   var password = '';
   bool isSharedPassword = false;
   if (tab == PeerTabIndex.ab) {

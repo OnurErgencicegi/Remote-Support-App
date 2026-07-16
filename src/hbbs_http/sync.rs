@@ -274,10 +274,11 @@ async fn start_hbbs_sync_async() {
 }
 
 fn heartbeat_url() -> String {
-    let url = crate::common::get_api_server(
-        Config::get_option("api-server"),
-        Config::get_option("custom-rendezvous-server"),
-    );
+    let api_opt = Config::get_option("api-server");
+    let custom_opt = Config::get_option("custom-rendezvous-server");
+    log::info!("RemoteSupport: DEBUG api-server='{}' custom='{}'", api_opt, custom_opt);
+    let url = crate::common::get_api_server(api_opt, custom_opt);
+    log::info!("RemoteSupport: DEBUG get_api_server sonucu url='{}' is_public={}", url, crate::is_public(&url));
     if url.is_empty() || crate::is_public(&url) {
         return "".to_owned();
     }

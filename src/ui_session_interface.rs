@@ -1951,6 +1951,7 @@ pub async fn io_loop<T: InvokeUiSession>(handler: Session<T>, round: u32) {
     let (sender, mut receiver) = mpsc::unbounded_channel::<Data>();
     *handler.sender.write().unwrap() = Some(sender.clone());
     let token = LocalConfig::get_option("access_token");
+    log::info!("RemoteSupport: io_loop icin okunan access_token uzunlugu={}", token.len());
     let key = crate::get_key(false).await;
     #[cfg(not(any(target_os = "android", target_os = "ios")))]
     if handler.is_port_forward() {

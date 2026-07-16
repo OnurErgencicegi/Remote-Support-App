@@ -20,6 +20,7 @@ import '../../common/widgets/peer_tab_page.dart';
 import '../../common/widgets/autocomplete.dart';
 import '../../models/platform_model.dart';
 import '../../desktop/widgets/material_mod_popup_menu.dart' as mod_menu;
+import 'auth/connection_guard.dart';
 
 class OnlineStatusWidget extends StatefulWidget {
   const OnlineStatusWidget({Key? key, this.onSvcStatusChanged})
@@ -327,11 +328,23 @@ class _ConnectionPageState extends State<ConnectionPage>
 
   /// Callback for the connect button.
   /// Connects to the selected peer.
+  ///
+  /// RemoteSupport: RustDesk bağlantısı fiilen kurulmadan HEMEN ÖNCE
+  /// auth-server'a "bu controller bu host'a bağlanabilir mi" diye soruyoruz
+  /// (ConnectionGuard.checkAndStart). Sunucu, bu ikili daha önce hiç
+  /// bağlanmadıysa izin verip 30 dakikalık bir süre başlatıyor; daha önce
+  /// bağlanılmışsa reddediyor. İzin yoksa connect() hiç çağrılmıyor.
   void onConnect(
       {bool isFileTransfer = false,
       bool isViewCamera = false,
-      bool isTerminal = false}) {
-    var id = _idController.id;
+      bool isTerminal = false}) async {
+    var id = _idController.id.trim();
+    if (id.isEmpty) return;
+
+    final allowed = await ConnectionGuard.checkAndStart(context, id);
+    if (!allowed) return;
+    if (!mounted) return;
+
     connect(context, id,
         isFileTransfer: isFileTransfer,
         isViewCamera: isViewCamera,

@@ -1817,9 +1817,7 @@ pub async fn get_key(sync: bool) -> String {
         let mut options = crate::ipc::get_options_async().await;
         options.remove("key").unwrap_or_default()
     };
-    if key.is_empty() {
-        key = config::RS_PUB_KEY.to_owned();
-    }
+  
     key
 }
 
