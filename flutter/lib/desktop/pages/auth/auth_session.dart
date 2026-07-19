@@ -131,6 +131,25 @@ class AuthSession {
     roleRx.value = AuthRole.host;
   }
 
+  /// RemoteSupport: tier durumunu ve aylık kalan kullanım süresini
+  /// auth-server'dan çeker (GET /auth/me/usage). Giriş yapılmamışsa ya da
+  /// istek başarısız olursa null döner - çağıran taraf (UI) bunu "gösterme"
+  /// sinyali olarak kullanmalı.
+  static Future<UsageInfo?> fetchUsage() async {
+    if (token.isEmpty) return null;
+    try {
+      final resp = await http.get(
+        Uri.parse('$kAuthServerBaseUrl/auth/me/usage'),
+        headers: {'Authorization': 'Bearer $token'},
+      ).timeout(const Duration(seconds: 8));
+      if (resp.statusCode != 200) return null;
+      final data = jsonDecode(resp.body) as Map<String, dynamic>;
+      return UsageInfo.fromJson(data);
+    } catch (e) {
+      return null;
+    }
+  }
+
   /// RemoteSupport: email doğrulanmamışsa 403 dönebilir - bu durumda
   /// AuthResult.isEmailNotVerified = true olur, session KAYDEDİLMEZ.
   static Future<AuthResult> login(String email, String password) async {
@@ -440,5 +459,35 @@ class AuthSession {
     final rnd = Random.secure();
     return List.generate(length, (_) => chars[rnd.nextInt(chars.length)])
         .join();
+  }
+}
+
+/// RemoteSupport: /auth/me/usage yanıtını taşıyan basit veri sınıfı.
+/// AuthSession.fetchUsage() tarafından döndürülür; UI (örn. üst bar/menü)
+/// tier rozeti ve kalan dakika göstergesi için kullanır.
+class UsageInfo {
+  final String tier;
+  final bool proActive;
+  final int? proDaysLeft;
+  final int? usedMinutesThisMonth;
+  final int? remainingMinutesThisMonth;
+  final int capMinutes;
+  UsageInfo({
+    required this.tier,
+    required this.proActive,
+    this.proDaysLeft,
+    this.usedMinutesThisMonth,
+    this.remainingMinutesThisMonth,
+    required this.capMinutes,
+  });
+  factory UsageInfo.fromJson(Map<String, dynamic> json) {
+    return UsageInfo(
+      tier: json['tier'] as String? ?? 'free',
+      proActive: json['proActive'] as bool? ?? false,
+      proDaysLeft: json['proDaysLeft'] as int?,
+      usedMinutesThisMonth: json['usedMinutesThisMonth'] as int?,
+      remainingMinutesThisMonth: json['remainingMinutesThisMonth'] as int?,
+      capMinutes: json['capMinutes'] as int? ?? 240,
+    );
   }
 }

@@ -47,6 +47,149 @@ Widget _buildLogoutButton(BuildContext context) {
   );
 }
 
+/// RemoteSupport: giriş yapan hesabın tier durumu (Free/Pro) ve aylık
+/// kalan bağlantı süresini gösteren küçük kart. auth-server'daki
+/// GET /auth/me/usage endpoint'inden veri çeker (bkz. AuthSession.fetchUsage).
+/// Pro ise kalan gün sayısını, Free ise "X / 240 dk kaldı" şeklinde bir
+/// ilerleme çubuğu gösterir. Giriş yapılmamışsa (host modu) hiçbir şey
+/// render edilmez.
+class TierUsageCard extends StatefulWidget {
+  const TierUsageCard({Key? key}) : super(key: key);
+
+  @override
+  State<TierUsageCard> createState() => _TierUsageCardState();
+}
+
+class _TierUsageCardState extends State<TierUsageCard> {
+  UsageInfo? _usage;
+  bool _loading = true;
+  Timer? _refreshTimer;
+
+  @override
+  void initState() {
+    super.initState();
+    _load();
+    // RemoteSupport: kullanıcı bir bağlantı başlattığında kullanım
+    // dakikaları değişir - panel açıkken bunu periyodik tazeleyerek
+    // güncel tutuyoruz (60 saniyede bir, ağır bir işlem değil).
+    _refreshTimer = Timer.periodic(const Duration(seconds: 60), (_) => _load());
+  }
+
+  Future<void> _load() async {
+    final usage = await AuthSession.fetchUsage();
+    if (!mounted) return;
+    setState(() {
+      _usage = usage;
+      _loading = false;
+    });
+  }
+
+  @override
+  void dispose() {
+    _refreshTimer?.cancel();
+    super.dispose();
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    if (AuthSession.email.isEmpty) return const SizedBox.shrink();
+    if (_loading) return const SizedBox.shrink();
+    if (_usage == null) return const SizedBox.shrink();
+
+    final textColor = Theme.of(context).textTheme.titleLarge?.color;
+    final usage = _usage!;
+
+    if (usage.proActive) {
+      return Padding(
+        padding: const EdgeInsets.only(top: 6),
+        child: Row(
+          children: [
+            Container(
+              padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 2),
+              decoration: BoxDecoration(
+                color: Colors.green.withOpacity(0.15),
+                borderRadius: BorderRadius.circular(10),
+              ),
+              child: const Text(
+                'Pro',
+                style: TextStyle(
+                    fontSize: 11,
+                    color: Colors.green,
+                    fontWeight: FontWeight.w600),
+              ),
+            ),
+            const SizedBox(width: 6),
+            if (usage.proDaysLeft != null)
+              Text(
+                'Bitmesine ${usage.proDaysLeft} gün',
+                style:
+                    TextStyle(fontSize: 11, color: textColor?.withOpacity(0.5)),
+              ),
+          ],
+        ),
+      );
+    }
+
+    // Free tier: ilerleme çubuğu + kalan dakika.
+    final used = usage.usedMinutesThisMonth ?? 0;
+    final cap = usage.capMinutes;
+    final remaining = usage.remainingMinutesThisMonth ?? (cap - used);
+    final pct = cap == 0 ? 0.0 : (used / cap).clamp(0.0, 1.0);
+    final isNearLimit = remaining <= 30;
+
+    return Padding(
+      padding: const EdgeInsets.only(top: 6),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Row(
+            children: [
+              Container(
+                padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 2),
+                decoration: BoxDecoration(
+                  color: Colors.blueGrey.withOpacity(0.15),
+                  borderRadius: BorderRadius.circular(10),
+                ),
+                child: Text(
+                  'Free',
+                  style: TextStyle(
+                      fontSize: 11,
+                      color: textColor?.withOpacity(0.7),
+                      fontWeight: FontWeight.w600),
+                ),
+              ),
+              const SizedBox(width: 6),
+              Text(
+                'Bu ay kalan: $remaining dk',
+                style: TextStyle(
+                  fontSize: 11,
+                  color:
+                      isNearLimit ? Colors.orange : textColor?.withOpacity(0.5),
+                  fontWeight: isNearLimit ? FontWeight.w600 : FontWeight.normal,
+                ),
+              ),
+            ],
+          ),
+          const SizedBox(height: 4),
+          ClipRRect(
+            borderRadius: BorderRadius.circular(3),
+            child: LinearProgressIndicator(
+              value: pct,
+              minHeight: 4,
+              backgroundColor: Colors.grey.withOpacity(0.2),
+              valueColor: AlwaysStoppedAnimation<Color>(
+                pct >= 1.0
+                    ? Colors.red
+                    : (isNearLimit ? Colors.orange : MyTheme.accent),
+              ),
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+}
+
 class DesktopHomePage extends StatefulWidget {
   const DesktopHomePage({Key? key}) : super(key: key);
 
@@ -85,8 +228,6 @@ class _DesktopHomePageState extends State<DesktopHomePage>
     // (bağlan) kutusu tamamen gizlenir - sadece kendi ID/parola kutusunu
     // görür. Controller rolündeki kullanıcı mevcut tam arayüzü görmeye
     // devam eder.
-    // TODO: tier bazlı ek kısıtlamalar (kaç farklı kişiye bağlanabilir,
-    // ne kadar süreyle bağlanabilir vb.) ileride buraya eklenecek.
     final isHost = AuthSession.role == AuthRole.host;
     final hideRightPane = isIncomingOnly || isHost;
     return _buildBlock(
@@ -108,6 +249,9 @@ class _DesktopHomePageState extends State<DesktopHomePage>
   Widget buildLeftPane(BuildContext context) {
     final isIncomingOnly = bind.isIncomingOnly();
     final isOutgoingOnly = bind.isOutgoingOnly();
+    // RemoteSupport: Çıkış Yap butonu artık bu listede DEĞİL - aşağıda
+    // ayrı bir Column ile sol panelin en altına sabitleniyor (bkz.
+    // return ChangeNotifierProvider.value(...) içindeki yapı).
     final children = <Widget>[
       if (!isOutgoingOnly) buildPresetPasswordWarning(),
       // RemoteSupport: "RustDesk tarafından desteklenmemektedir" ikonu/yazısı kaldırıldı
@@ -137,7 +281,6 @@ class _DesktopHomePageState extends State<DesktopHomePage>
         },
       ),
       buildPluginEntry(),
-      _buildLogoutButton(context),
     ];
     if (isIncomingOnly) {
       children.addAll([
@@ -163,14 +306,19 @@ class _DesktopHomePageState extends State<DesktopHomePage>
           children: [
             Column(
               children: [
-                SingleChildScrollView(
-                  controller: _leftPaneScrollController,
-                  child: Column(
-                    key: _childKey,
-                    children: children,
+                Expanded(
+                  child: SingleChildScrollView(
+                    controller: _leftPaneScrollController,
+                    child: Column(
+                      key: _childKey,
+                      children: children,
+                    ),
                   ),
                 ),
-                Expanded(child: Container())
+                // RemoteSupport: Çıkış Yap butonu artık kaydırılabilir
+                // içeriğin İÇİNDE değil - sol panelin en altına, içerik
+                // ne kadar kısa/uzun olursa olsun sabit şekilde oturur.
+                _buildLogoutButton(context),
               ],
             ),
             if (isOutgoingOnly)
@@ -420,6 +568,9 @@ class _DesktopHomePageState extends State<DesktopHomePage>
                         ),
                       ),
                     ),
+                  // RemoteSupport: email'in hemen altında tier (Free/Pro)
+                  // ve aylık kalan bağlantı süresi gösteriliyor.
+                  const TierUsageCard(),
                 ],
               ),
             ),
