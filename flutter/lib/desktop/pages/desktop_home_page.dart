@@ -405,6 +405,21 @@ class _DesktopHomePageState extends State<DesktopHomePage>
                         ),
                     ],
                   ),
+                  // RemoteSupport: giriş yapan hesabın email'i (varsa),
+                  // Tek Kullanımlık Parola kutusunun hemen altında küçük
+                  // gri bir satır olarak gösteriliyor. Email boşsa
+                  // (hiç giriş yapılmamışsa) hiçbir şey render edilmez.
+                  if (AuthSession.email.isNotEmpty)
+                    Padding(
+                      padding: const EdgeInsets.only(top: 4),
+                      child: Text(
+                        AuthSession.email,
+                        style: TextStyle(
+                          fontSize: 11,
+                          color: textColor?.withOpacity(0.5),
+                        ),
+                      ),
+                    ),
                 ],
               ),
             ),
@@ -1000,6 +1015,9 @@ void setPasswordDialog({VoidCallback? notEmptyCallback}) async {
         return;
       }
       if (pass.isNotEmpty) {
+        // RemoteSupport: kullanıcı elle kalıcı şifre belirledi/değiştirdi,
+        // server'a da yaz - tek doğru kaynak server olsun.
+        await AuthSession.pushPasswordToServer(pass);
         notEmptyCallback?.call();
       }
       close();

@@ -1,17 +1,28 @@
 // flutter/lib/desktop/pages/auth/login_page.dart
 //
 // RemoteSupport - kendi auth-server'ımıza karşı giriş/kayıt ekranı.
-// Client artık launcher'sız da (rustdesk.exe tek başına) çalıştırıldığında
-// önce burayı gösterip auth-server'dan doğrulama alıyor.
 //
-// NOT: Bu sayfa artık yalnızca "teknisyen/controller" olmak isteyenler
-// tarafından görülüyor (bkz. host_home_page.dart -> "Giriş yap / Kaydol").
-// Host'lar zaten kayıt olmadan HostHomePage'de kendi ID/parolasını görüyor,
-// bu yüzden burada rol seçimi anlamsız hale geldi ve kaldırıldı - kayıt
-// olan herkes otomatik olarak AuthRole.controller olarak kaydedilir.
+// GÜNCELLEME (email doğrulama):
+// - Register artık otomatik login yapmıyor. Başarılı olunca EmailVerifyPage
+//   açılıyor (Navigator.push), doğrulama tamamlanınca kullanıcı buraya geri
+//   dönüyor ve "şimdi giriş yapın" mesajıyla login moduna geçiliyor.
+// - login()'den email_not_verified hatası gelirse, kullanıcıya şifre formu
+//   yerine "email'inizi doğrulayın" mesajı + tekrar kod gönderme imkanı
+//   sunuluyor. NOT: login() email_not_verified döndüğünde register token'ı
+//   elimizde olmuyor (login sadece email+şifre alır) - bu yüzden bu durumda
+//   "Kodu Tekrar Gönder" için email adresini tekrar register akışından değil
+//   ayrı bir yoldan istemek gerekir. Basit ve güvenilir çözüm: kullanıcıya
+//   sadece "email'inizi doğrulayın, mail kutunuzu kontrol edin" mesajı
+//   gösteriyoruz; kod bulunamadıysa "Şifremi Unuttum değil, kayıt sırasında
+//   size gelen kodu kullanın" yönlendirmesi yapıyoruz. Kod gerçekten
+//   kaybolduysa kullanıcı yeniden kayıt deneyip resend akışına
+//   düşebilir - bu köşe durumu şimdilik kabul edilebilir.
+// - "Şifremi Unuttum" linki eklendi.
 
 import 'package:flutter/material.dart';
 import 'auth_session.dart';
+import 'email_verify_page.dart';
+import 'forgot_password_page.dart';
 
 class LoginPage extends StatefulWidget {
   final VoidCallback onAuthenticated;
@@ -29,6 +40,7 @@ class _LoginPageState extends State<LoginPage> {
 
   bool _loading = false;
   String? _error;
+  String? _info;
 
   @override
   void dispose() {
@@ -49,21 +61,86 @@ class _LoginPageState extends State<LoginPage> {
     setState(() {
       _loading = true;
       _error = null;
+      _info = null;
     });
 
-    // Bu ekrandan kayıt olan herkes teknisyen/controller'dır. Host'lar
-    // hiç kayıt olmadan HostHomePage'de kendi ID/parolasını zaten görüyor.
-    final result = _isRegisterMode
-        ? await AuthSession.register(email, password, AuthRole.controller)
-        : await AuthSession.login(email, password);
+    if (_isRegisterMode) {
+      await _handleRegister(email, password);
+    } else {
+      await _handleLogin(email, password);
+    }
+  }
+
+  Future<void> _handleLogin(String email, String password) async {
+    final result = await AuthSession.login(email, password);
 
     if (!mounted) return;
     setState(() => _loading = false);
 
     if (result.success) {
       widget.onAuthenticated();
+    } else if (result.isEmailNotVerified) {
+      setState(() {
+        _error = null;
+        _info =
+            'Email adresiniz doğrulanmamış. Lütfen kayıt olurken gönderilen '
+            'kodu girin, ya da mail kutunuzu kontrol edin.';
+      });
     } else {
       setState(() => _error = result.error);
+    }
+  }
+
+  Future<void> _handleRegister(String email, String password) async {
+    // Bu ekrandan kayıt olan herkes teknisyen/controller'dır. Host'lar
+    // hiç kayıt olmadan HostHomePage'de kendi ID/parolasını zaten görüyor.
+    final result =
+        await AuthSession.register(email, password, AuthRole.controller);
+
+    if (!mounted) return;
+    setState(() => _loading = false);
+
+    if (!result.success) {
+      setState(() => _error = result.error);
+      return;
+    }
+
+    // Kayıt başarılı ama SESSION AÇILMADI - önce email doğrulama ekranına
+    // git. Doğrulama başarılı olursa (pop(true) ile dönerse) kullanıcıyı
+    // login moduna alıp "şimdi giriş yapın" bilgisi göster.
+    final verified = await Navigator.of(context).push<bool>(
+      MaterialPageRoute(
+        builder: (_) => EmailVerifyPage(
+          registerToken: result.token!,
+          email: email,
+        ),
+      ),
+    );
+
+    if (!mounted) return;
+
+    if (verified == true) {
+      setState(() {
+        _isRegisterMode = false;
+        _error = null;
+        _info = 'Email doğrulandı! Şimdi giriş yapabilirsiniz.';
+        _passCtrl.clear();
+      });
+    }
+  }
+
+  Future<void> _openForgotPassword() async {
+    final result = await Navigator.of(context).push<bool>(
+      MaterialPageRoute(builder: (_) => const ForgotPasswordPage()),
+    );
+
+    if (!mounted) return;
+
+    if (result == true) {
+      setState(() {
+        _error = null;
+        _info = 'Şifreniz sıfırlandı. Yeni şifrenizle giriş yapabilirsiniz.';
+      });
     }
   }
 
@@ -104,15 +181,33 @@ class _LoginPageState extends State<LoginPage> {
                     border: OutlineInputBorder(),
                   ),
                 ),
+                if (!_isRegisterMode) ...[
+                  Align(
+                    alignment: Alignment.centerRight,
+                    child: TextButton(
+                      onPressed: _loading ? null : _openForgotPassword,
+                      child: const Text('Şifremi Unuttum',
+                          style: TextStyle(fontSize: 12)),
+                    ),
+                  ),
+                ],
                 if (_error != null) ...[
-                  const SizedBox(height: 16),
+                  const SizedBox(height: 8),
                   Text(
                     _error!,
                     style: const TextStyle(color: Colors.red, fontSize: 13),
                     textAlign: TextAlign.center,
                   ),
                 ],
-                const SizedBox(height: 24),
+                if (_info != null) ...[
+                  const SizedBox(height: 8),
+                  Text(
+                    _info!,
+                    style: const TextStyle(color: Colors.green, fontSize: 13),
+                    textAlign: TextAlign.center,
+                  ),
+                ],
+                const SizedBox(height: 16),
                 FilledButton(
                   onPressed: _loading ? null : _submit,
                   child: Padding(
@@ -133,6 +228,7 @@ class _LoginPageState extends State<LoginPage> {
                       : () => setState(() {
                             _isRegisterMode = !_isRegisterMode;
                             _error = null;
+                            _info = null;
                           }),
                   child: Text(_isRegisterMode
                       ? 'Zaten hesabım var, giriş yap'

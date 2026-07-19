@@ -187,7 +187,8 @@ impl<T: InvokeUiSession> Remote<T> {
                 let is_secured = peer.is_secured();
                 self.handler
                     .set_connection_type(is_secured, direct, stream_type); // flutter -> connection_ready
-                if !is_secured
+                if false // RemoteSupport: hbbs KeyExchange implement etmiyor, is_secured hicbir zaman true olamaz - bkz DEVIR-TESLIM 3
+                    && !is_secured
                     && !crate::common::is_direct_ip_access(&self.handler.get_id())
                     && !client::confirm_insecure_connection(&self.handler, &mut self.receiver).await
                 {
